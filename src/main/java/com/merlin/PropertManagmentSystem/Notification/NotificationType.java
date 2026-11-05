@@ -1,0 +1,15 @@
+package com.merlin.PropertManagmentSystem.Notification;
+
+public enum NotificationType {
+    PAYMENT_RECEIVED,
+    SUBSCRIPTION_DUE,
+    MISDIRECTED_PAYMENT,
+    LOCKOUT_WARNING,
+    VACANT_UNIT_PAYMENT,
+    LEASE_CREATED,
+    SUCCESSFUL_ROLE_CHANGE,
+    SUBSCRIPTION_FAILED,
+    SUBSCRIPTION_SUCCESSFUL,
+    SUBSCRIPTION_EXPIRED
+
+}

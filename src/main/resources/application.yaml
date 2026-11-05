@@ -1,0 +1,56 @@
+logging:
+  level:
+    org.hibernate.SQL: WARN
+    org.hibernate.tool.schema: WARN
+
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  application:
+    name: PropertManagmentSystem
+  datasource:
+    url: jdbc:mysql://localhost:3306/PropertyManagementSystem
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: update
+    database: mysql
+    database-platform: org.hibernate.dialect.MySQLDialect
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: 18000000
+
+africastalking:
+  base-url: ${AT_BASE_URL}
+  username: ${AT_USERNAME}
+  api-key: ${AT_API_KEY}
+  sender-id: ${AT_SENDER_ID:}
+
+subscription:
+  amount: ${SUBSCRIPTION_AMOUNT}
+
+STK:
+  consumer-key: ${STK_CONSUMER_KEY}
+  consumer-secret: ${STK_CONSUMER_SECRET}
+  short-code: ${STK_SHORT_CODE}
+  passkey: ${STK_PASSKEY}
+  callback-url: ${STK_CALL_BACK_URL}
+
+C2B:
+  consumer-key: ${C2B_CONSUMER_KEY}
+  consumer-secret: ${C2B_CONSUMER_SECRET}
+  passkey: ${C2B_PASSKEY}
+  callback-url: ${C2B_CALL_BACK_URL}
+
+
+brevo:
+  api-key: ${BREVO_API_KEY}
+  sender-name: ${BREVO_SENDER_NAME}
+  sender-email: ${BREV0_SENDER_EMAIL}
+
+daraja:
+  base-url: ${DARAJA_BASE_URL}
