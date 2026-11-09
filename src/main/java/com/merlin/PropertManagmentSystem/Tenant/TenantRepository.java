@@ -12,6 +12,12 @@ public interface TenantRepository  extends JpaRepository<Tenant,Long> {
 
     boolean existsByNationalIdAndLeases_Unit_Property_Id(String nationalId, Long propertyId);
 
+    boolean existsByNationalIdAndLandlord(String nationalId, User landlord);
+    boolean existsByNationalIdAndOrganisation(String nationalId, Organisation org);
+    boolean existsByEmailAndLandlord(String email, User landlord);
+    boolean existsByEmailAndOrganisation(String email, Organisation org);
+    List<Tenant> findAllByProperty_Id(Long propertyId);
+
 
     List<Tenant> findAllByLandlord(User landlord);
 

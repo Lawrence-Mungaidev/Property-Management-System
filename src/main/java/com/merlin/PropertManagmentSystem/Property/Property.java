@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.merlin.PropertManagmentSystem.Organisation.Organisation;
 import com.merlin.PropertManagmentSystem.PropertyAsign.PropertyAsign;
+import com.merlin.PropertManagmentSystem.Tenant.Tenant;
 import com.merlin.PropertManagmentSystem.Unit.Unit;
 import com.merlin.PropertManagmentSystem.User.User;
 import jakarta.persistence.*;
@@ -65,6 +66,11 @@ public class Property {
     )
     @JsonManagedReference
     private List<Unit> units;
+    @OneToMany(
+            mappedBy = "property"
+    )
+    @JsonManagedReference
+    private List<Tenant>  tenants;
 
     public Property() {
     }

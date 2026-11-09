@@ -6,6 +6,7 @@ import com.merlin.PropertManagmentSystem.Credit.Credit;
 import com.merlin.PropertManagmentSystem.Lease.Lease;
 import com.merlin.PropertManagmentSystem.Notification.Notification;
 import com.merlin.PropertManagmentSystem.Organisation.Organisation;
+import com.merlin.PropertManagmentSystem.Property.Property;
 import com.merlin.PropertManagmentSystem.User.User;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -17,6 +18,12 @@ import java.util.List;
 @Entity
 @Getter
 @Setter
+@Table(name = "tenant", uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"landlord_id", "national_id"}),
+        @UniqueConstraint(columnNames = {"organisation_id", "national_id"}),
+        @UniqueConstraint(columnNames = {"landlord_id", "email"}),
+        @UniqueConstraint(columnNames = {"organisation_id", "email"})
+})
 public class Tenant {
 
     @Id
@@ -24,9 +31,7 @@ public class Tenant {
     private Long id;
     private String firstName;
     private String lastName;
-    @Column(unique = true)
     private String nationalId;
-    @Column(unique = true)
     private String phoneNumber;
     private BigDecimal walletBalance;
     @OneToMany(
@@ -34,8 +39,8 @@ public class Tenant {
     )
     @JsonManagedReference
     private List<Credit> credit;
-    @Column(unique = true)
     private String email;
+
 
     @OneToMany(
             mappedBy = "receiverTenant"
@@ -59,6 +64,10 @@ public class Tenant {
     @JsonBackReference
     private Organisation organisation;
 
+    @ManyToOne(fetch = FetchType.LAZY )
+    @JoinColumn(name = " propertyId")
+    @JsonBackReference
+    private Property property;
 
 
     

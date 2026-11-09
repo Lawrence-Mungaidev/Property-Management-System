@@ -28,5 +28,7 @@ public record TenantDto(
         @NotBlank(message = "Phone number is required")
         @Pattern(regexp = "^(?:\\+254|0)[17]\\d{8}$",
                 message = "Enter a valid Kenyan number e.g. 0712345678, 0112345678 or +254712345678")
-        String phoneNumber
+        String phoneNumber,
+        @NotNull(message = "property is required")
+        Long propertyId
 ) {}
