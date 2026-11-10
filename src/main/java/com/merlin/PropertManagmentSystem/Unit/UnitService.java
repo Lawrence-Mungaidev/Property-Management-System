@@ -151,7 +151,10 @@ public class UnitService {
 
             units = unitRepository.findByProperty(property);
         } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
-            List<Property> propertyAssigns = propertyAsignRepository.findByCareTakerAndUnAssignedAtIsNull(authenticatedUser);
+            List<Property> propertyAssigns = propertyAsignRepository.findByCareTakerAndUnAssignedAtIsNull(authenticatedUser)
+                    .stream()
+                    .map(PropertyAsign :: getProperty)
+                    .toList();
 
             boolean isFound = propertyAssigns.contains(property);
 

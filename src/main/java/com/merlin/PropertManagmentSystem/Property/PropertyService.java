@@ -162,7 +162,10 @@ public class PropertyService {
             properties = propertyRepository.findByOrganisation(organisation);
         } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
 
-          List<Property> assignedProperties = propertyAsignRepository.findByCareTakerAndUnAssignedAtIsNull(authenticatedUser);
+          List<Property> assignedProperties = propertyAsignRepository.findByCareTakerAndUnAssignedAtIsNull(authenticatedUser)
+                  .stream()
+                  .map(PropertyAsign :: getProperty)
+                  .toList();
 
           properties.addAll(assignedProperties);
 

@@ -1,6 +1,7 @@
 package com.merlin.PropertManagmentSystem.PropertyAsign;
 
 import com.merlin.PropertManagmentSystem.Exception.BusinessRuleException;
+import com.merlin.PropertManagmentSystem.Exception.DuplicateRuleException;
 import com.merlin.PropertManagmentSystem.Exception.ResourceNotFound;
 import com.merlin.PropertManagmentSystem.Property.Property;
 import com.merlin.PropertManagmentSystem.Property.PropertyRepository;
@@ -24,26 +25,41 @@ public class PropertyAsignService {
     private final UserRepository userRepository;
 
     public PropertyAsignResponseDto assignProperty(PropertyAsignDto  dto, User authenticatedUser) {
-        PropertyAsign propertyAsign = new PropertyAsign();
 
-        boolean isOfficer = authenticatedUser.getRole().equals(Role.CHAIRMAN)
-                || authenticatedUser.getRole().equals(Role.SECRETARY);
-
-        if (isOfficer & authenticatedUser.isActive()) {
-            propertyAsign.setOrganisation(authenticatedUser.getOrganisation());
-        } else if (authenticatedUser.getRole().equals(Role.LANDLORD)) {
-            propertyAsign.setLandlord(authenticatedUser);
-        } else {
-            throw new BusinessRuleException("You cannot assign properties");
+        if(propertyAsignRepository.existsByCareTaker_IdAndProperty_IdAndUnAssignedAtIsNull(dto.careTaker(),  dto.propertyId())){
+            throw new DuplicateRuleException("The Property is already assigned to someone else");
         }
 
-        Property property = propertyRepository.findById(dto.properties())
-                .orElseThrow(() -> new ResourceNotFound("Property"));
+        if(propertyAsignRepository.existsByProperty_IdAndUnAssignedAtIsNull(dto.propertyId())){
+            throw new DuplicateRuleException("The Property is already assigned to someone else");
+        }
+
+        PropertyAsign propertyAsign = new PropertyAsign();
+
+        Property property = propertyRepository.findById(dto.propertyId())
+                .orElseThrow(() -> new ResourceNotFound("Property not found"));
 
         User careTaker = userRepository.findById(dto.careTaker())
                 .orElseThrow(() -> new ResourceNotFound("User not found"));
 
 
+        boolean isOfficer = authenticatedUser.getRole().equals(Role.CHAIRMAN)
+                || authenticatedUser.getRole().equals(Role.SECRETARY);
+
+        if(authenticatedUser.getRole().equals(Role.LANDLORD)) {
+            if(property.getLandlord() != null && property.getLandlord().getId().equals(authenticatedUser.getId())) {
+                if(careTaker.getLandlord() != null && property.getLandlord().getId().equals(careTaker.getLandlord().getId())) {
+                    propertyAsign.setLandlord(property.getLandlord());
+                }
+            }
+        } else if (isOfficer && authenticatedUser.isActive()) {
+            if(property.getOrganisation() != null && property.getOrganisation().getId().equals(authenticatedUser.getId())) {
+                if(careTaker.getOrganisation() != null && property.getOrganisation().getId().equals(careTaker.getOrganisation().getId())) {
+                    propertyAsign.setOrganisation(property.getOrganisation());
+                }
+            }
+
+        }
 
         propertyAsign.setProperty(property);
         propertyAsign.setCareTaker(careTaker);
@@ -55,41 +71,43 @@ public class PropertyAsignService {
         return propertyAsignMapper.toPropertyAsignResponseDto(savedAssigned);
     }
 
-    public PropertyAsignResponseDto updateProperty(Long propertyAssignId,PropertyAsignDto  dto, User authenticatedUser) {
+    public void unAssignProperty(Long propertyAssignId, User authenticatedUser) {
+        PropertyAsign propertyAsign = propertyAsignRepository.findById(propertyAssignId)
+                .orElseThrow(() -> new ResourceNotFound("PropertyAssign not found"));
+
+        if(propertyAsign.getUnAssignedAt() != null) {
+            throw new BusinessRuleException("You've already unassigned this property");
+        }
+
         boolean isOfficer = authenticatedUser.getRole().equals(Role.CHAIRMAN)
                 || authenticatedUser.getRole().equals(Role.SECRETARY)
-                || authenticatedUser.getRole().equals(Role.LANDLORD);
+                || authenticatedUser.getRole().equals(Role.TREASURER);
 
-        if (!isOfficer & !authenticatedUser.isActive()) {
-            throw new BusinessRuleException("You cannot assign properties");
+        boolean isAllowed = false;
+
+        if(authenticatedUser.getRole().equals(Role.LANDLORD)) {
+            if(propertyAsign.getLandlord() != null && propertyAsign.getLandlord().getId().equals(authenticatedUser.getId())) {
+                isAllowed = true;
+            }
+        }else if(isOfficer && authenticatedUser.isActive()) {
+            if(propertyAsign.getOrganisation() != null && propertyAsign.getOrganisation().getId().equals(authenticatedUser.getId())) {
+                isAllowed = true;
+            }
+        }else {
+            throw new BusinessRuleException("Sorry you cant unassign this caretaker");
         }
 
-        PropertyAsign propertyAsign = propertyAsignRepository.findById(propertyAssignId)
-                .orElseThrow(() -> new ResourceNotFound("Property not found"));
-
-        Property property = propertyRepository.findById(dto.properties())
-                .orElseThrow(() -> new ResourceNotFound("Property"));
-
-        if(dto.properties() != null) {
-
-            propertyAsign.setProperty(property);
+        if(!isAllowed) {
+            throw new BusinessRuleException("Sorry you cant unassign this caretaker");
         }
 
-        if(dto.careTaker() !=null){
 
-            User careTaker = userRepository.findById(dto.careTaker())
-                            .orElseThrow(() -> new ResourceNotFound("User not found"));
+        propertyAsign.setUnassignedBy(authenticatedUser);
+        propertyAsign.setUnAssignedAt(LocalDateTime.now());
 
-            propertyAsign.setCareTaker(careTaker);
+        var savedPA = propertyAsignRepository.save(propertyAsign);
 
-        }
-
-        propertyAsign.setAssignedBy(authenticatedUser);
-        propertyAsign.setAssignedAt(LocalDateTime.now());
-
-        var PropertyAssign = propertyAsignRepository.save(propertyAsign);
-
-        return propertyAsignMapper.toPropertyAsignResponseDto(PropertyAssign);
+         propertyAsignMapper.toPropertyAsignResponseDto(savedPA);
     }
 
     public List<PropertyAsignResponseDto> getPropertyAssign(User authenticatedUser) {
@@ -104,11 +122,11 @@ public class PropertyAsignService {
                 || authenticatedUser.getRole().equals(Role.TREASURER);
 
         if (isOfficer & authenticatedUser.isActive()) {
-            propertyAssigns.addAll(authenticatedUser.getOrganisation().getPropertyAssigns());
+            propertyAssigns.addAll(propertyAsignRepository.findByProperty_Organisation_Id(authenticatedUser.getOrganisation().getId()));
         } else if (authenticatedUser.getRole().equals(Role.LANDLORD)) {
-            propertyAssigns.addAll(authenticatedUser.getPropertyAssignsLandlord());
-        } else if (authenticatedUser.getRole().equals(Role.CARETAKER) && authenticatedUser.isActive()) {
-            propertyAssigns.addAll(authenticatedUser.getPropertyAssigns());
+            propertyAssigns.addAll(propertyAsignRepository.findByProperty_Landlord_Id(authenticatedUser.getId()));
+        } else {
+            throw new BusinessRuleException("Sorry you cant view assign properties");
         }
 
         return propertyAssigns
@@ -126,59 +144,34 @@ public class PropertyAsignService {
         boolean isOfficer = authenticatedUser.getRole().equals(Role.CHAIRMAN)
                 ||  authenticatedUser.getRole().equals(Role.SECRETARY) || authenticatedUser.getRole().equals(Role.TREASURER);
 
-        PropertyAsign rightPropertyAsign = null;
 
+        boolean ownsIt = false;
 
         if(authenticatedUser.getRole().equals(Role.LANDLORD)){
-            boolean found = false;
-            for(Property property : authenticatedUser.getProperties()){
-                if(property.getId().equals(propertyAsign.getProperty().getId())) {
-                    found = true;
-                }
-            }
-
-            if(!found){
-                throw new ResourceNotFound("Property not found");
-            }
-
-            rightPropertyAsign = propertyAsign;
+           if( propertyAsign.getLandlord() !=null && !propertyAsign.getLandlord().getId().equals(authenticatedUser.getId())) {
+               throw new BusinessRuleException("You cannot view assign properties");
+           }
+           if(propertyAsignRepository.existsByIdAndProperty_Landlord_Id(propertyAsign.getId(), authenticatedUser.getId())) {
+               ownsIt = true;
+           }
         } else if (!isOfficer & authenticatedUser.isActive()) {
-
-            List<Property> properties = authenticatedUser.getProperties();
-
-            boolean found = false;
-            for(Property property : properties){
-                if(property.getId().equals(propertyAsign.getProperty().getId())) {
-                    found = true;
-                }
+            if(propertyAsign.getOrganisation() !=null && !propertyAsign.getOrganisation().getId().equals(authenticatedUser.getId())) {
+                throw new BusinessRuleException("You cannot view assign properties");
             }
 
-            if(!found){
-                throw new ResourceNotFound("Property not found");
+            if (propertyAsignRepository.existsByIdAndProperty_Organisation_Id(propertyAsign.getId(), authenticatedUser.getOrganisation().getId())) {
+                ownsIt = true;
             }
 
-            rightPropertyAsign = propertyAsign;
-
-        } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
-
-           List<Property> properties = propertyAsignRepository.findByCareTakerAndUnAssignedAtIsNull(authenticatedUser);
-
-           boolean found = false;
-           for(Property property : properties){
-               if(property.getId().equals(propertyAsign.getProperty().getId())) {
-                   found = true;
-               }
-           }
-
-           if(!found){
-               throw new ResourceNotFound("Property not found");
-           }
-
-            rightPropertyAsign = propertyAsign;
+        }else {
+            throw new BusinessRuleException("Sorry you cant view assign properties");
         }
 
+        if(!ownsIt){
+            throw new BusinessRuleException("Sorry you cant view assign properties");
+        }
 
-        return propertyAsignMapper.toPropertyAsignResponseDto(rightPropertyAsign);
+        return propertyAsignMapper.toPropertyAsignResponseDto(propertyAsign);
     }
 
 }

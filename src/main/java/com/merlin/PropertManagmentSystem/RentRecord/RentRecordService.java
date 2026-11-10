@@ -230,7 +230,10 @@ public class RentRecordService {
         } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
 
             List<Property> assigned = propertyAsignRepository
-                    .findByCareTakerAndUnAssignedAtIsNull(authenticatedUser);
+                    .findByCareTakerAndUnAssignedAtIsNull(authenticatedUser)
+                    .stream()
+                    .map(PropertyAsign :: getProperty)
+                    .toList();
 
             if (assigned.isEmpty()) {
                 return List.of();

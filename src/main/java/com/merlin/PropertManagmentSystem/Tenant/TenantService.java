@@ -173,7 +173,10 @@ public class TenantService {
         }else if(authenticatedUser.getRole().equals(Role.CARETAKER)){
 
             List<Property> assignedProperties = propertyAsignRepository
-                    .findByCareTakerAndUnAssignedAtIsNull(authenticatedUser);
+                    .findByCareTakerAndUnAssignedAtIsNull(authenticatedUser)
+                    .stream()
+                    .map(PropertyAsign :: getProperty)
+                    .toList();
 
             List<Tenant> assignedTenants;
 
