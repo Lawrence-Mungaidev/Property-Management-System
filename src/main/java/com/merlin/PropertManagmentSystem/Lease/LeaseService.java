@@ -25,7 +25,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 
@@ -49,10 +48,6 @@ public class LeaseService {
     @Transactional
     public LeaseResponseDto createLease(LeaseDto dto, User authenticatedUser) {
 
-        boolean isOfficer = authenticatedUser.getRole().equals(Role.CHAIRMAN)
-                ||  authenticatedUser.getRole().equals(Role.SECRETARY);
-
-
         Unit unit = unitRepository.findById(dto.unit())
                 .orElseThrow(()-> new ResourceNotFound("Unit not found"));
 
@@ -63,44 +58,8 @@ public class LeaseService {
 
         Lease lease = new Lease();
 
-        if(authenticatedUser.getRole().equals(Role.LANDLORD)){
-            boolean exists = propertyRepository.existsByIdAndLandlordId(property.getId(), authenticatedUser.getId());
-
-            if(!exists){
-                throw new BusinessRuleException("Property not found or you don't own it");
-            }
-
-            lease.setLandlord(authenticatedUser);
-
-        } else if (isOfficer) {
-            Organisation organisation = authenticatedUser.getOrganisation();
-
-            boolean exists = propertyRepository.existsByIdAndOrganisationId(property.getId(), organisation.getId());
-
-            if(!exists){
-                throw new BusinessRuleException("Property not found or you don't own it");
-            }
-            lease.setOrganisation(organisation);
-
-        } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
-
-            boolean exists = propertyAsignRepository.existsByCareTakerAndPropertyAndUnAssignedAtIsNull(authenticatedUser, property);
-
-            if(exists){
-                if(authenticatedUser.getLandlord() != null){
-                    lease.setLandlord(authenticatedUser.getLandlord());
-                }else if(authenticatedUser.getOrganisation() != null){
-                    lease.setOrganisation(authenticatedUser.getOrganisation());
-                }
-            }else{
-                throw new BusinessRuleException("you are not assigned to this property");
-            }
-
-
-
-
-        }else {
-            throw new BusinessRuleException("You cannot create a lease");
+        if(!ownsIt(lease,property,authenticatedUser)){
+            throw new BusinessRuleException("Sorry you cant create a Lease");
         }
 
         LocalDate today = LocalDate.now();
@@ -117,6 +76,14 @@ public class LeaseService {
         lease.setStartDate(LocalDate.now());
         lease.setDepositAmount(unit.getDepositAmount());
         lease.setLeaseStatus(LeaseStatus.ACTIVE);
+
+        if(unit.getMonthlyRent() == null){
+            throw new BusinessRuleException("The unit has no monthly rent set yet");
+        }
+
+        lease.setRentAtSigning(unit.getMonthlyRent());
+
+
         unit.setVacant(false);
 
         unitRepository.save(unit);
@@ -127,9 +94,63 @@ public class LeaseService {
 
         notificationService.systemNotification(leaseCreated, tenant.getLandlord(), NotificationType.LEASE_CREATED, channel.EMAIL);
 
-        rentRecordService.createFirstRentRecord(lease);
+       BigDecimal amountDues =  rentRecordService.createFirstRentRecord(savedLease);
 
-        return leaseMapper.toLeaseResponseDto(savedLease);
+       savedLease.setRentAtSigning(amountDues);
+
+       var saveLease = leaseRepository.save(savedLease);
+
+        return leaseMapper.toLeaseResponseDto(saveLease);
+    }
+
+    private boolean ownsIt(Lease lease, Property property, User authenticatedUser) {
+        boolean isOfficer = authenticatedUser.getRole().equals(Role.CHAIRMAN)
+                ||  authenticatedUser.getRole().equals(Role.SECRETARY);
+
+        boolean exists = false;
+        if(authenticatedUser.getRole().equals(Role.LANDLORD)){
+
+            if(property.getLandlord() != null && !propertyRepository.existsByIdAndLandlordId(property.getId(), authenticatedUser.getId())){
+                throw new BusinessRuleException("Sorry you cant create a Lease");
+            }
+            lease.setLandlord(authenticatedUser);
+            exists= true;
+
+        } else if (isOfficer && authenticatedUser.isActive()) {
+
+            if(authenticatedUser.getOrganisation() != null){
+                throw new BusinessRuleException("Sorry you cant create a Lease ");
+            }
+
+            if(property.getOrganisation() != null && !propertyRepository.existsByIdAndOrganisationId(property.getId(), authenticatedUser.getOrganisation().getId())){
+                throw new BusinessRuleException("Sorry you cant create a Lease");
+            }
+
+            lease.setOrganisation(authenticatedUser.getOrganisation());
+            exists= true;
+
+        } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
+
+
+            if(!propertyAsignRepository.existsByCareTakerAndPropertyAndUnAssignedAtIsNull(authenticatedUser, property)){
+                throw new BusinessRuleException("You cant create a Lease");
+            }
+
+            if(authenticatedUser.getOrganisation() != null){
+                lease.setOrganisation(authenticatedUser.getOrganisation());
+                exists= true;
+            } else if (authenticatedUser.getLandlord() != null) {
+                lease.setLandlord(authenticatedUser.getLandlord());
+                exists= true;
+            }else {
+                throw new BusinessRuleException("Sorry you cant create a Lease");
+            }
+
+
+        }else {
+            throw new BusinessRuleException("You cannot create a lease");
+        }
+        return exists;
     }
 
     @Transactional
@@ -171,14 +192,12 @@ public class LeaseService {
 
         if(authenticatedUser.getRole().equals(Role.LANDLORD)){
 
-            if(!unit.getProperty().getLandlord().equals(authenticatedUser)){
+            if(!unit.getProperty().getLandlord().getId().equals(authenticatedUser.getId())){
                 throw new BusinessRuleException("You don't own this Property");
             }
 
             lease.setLandlord(authenticatedUser);
             lease.setLeaseStatus(LeaseStatus.ACTIVE);
-            lease.setApproved(true);
-            lease.setApprovedBy(authenticatedUser);
             lease.setPreferredBillingDay(unit.getProperty().getPreferredBillingDay());
 
 
@@ -190,8 +209,6 @@ public class LeaseService {
 
             lease.setOrganisation(authenticatedUser.getOrganisation());
             lease.setLeaseStatus(LeaseStatus.ACTIVE);
-            lease.setApproved(true);
-            lease.setApprovedBy(authenticatedUser);
             lease.setPreferredBillingDay(unit.getProperty().getPreferredBillingDay());
 
         } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
@@ -215,8 +232,11 @@ public class LeaseService {
                 throw new BusinessRuleException("Caretaker is not linked to a landlord or organisation");
             }
 
-            lease.setLeaseStatus(LeaseStatus.PENDING_APPROVAL);
-            lease.setApproved(false);
+            lease.setLeaseStatus(LeaseStatus.ACTIVE);
+
+            String newLease = "Theirs a new tenant on board who has leased";
+
+            notificationService.systemNotification(newLease,authenticatedUser.getLandlord(),NotificationType.New_Tenant_Leased,channel.EMAIL);
 
 
         }else {
@@ -251,6 +271,8 @@ public class LeaseService {
         lease.setStartDate(dto.startDate());
         lease.setTenant(tenant);
         lease.setUnit(unit);
+        lease.setRentAtSigning(unit.getMonthlyRent());
+        lease.setDepositAmount(unit.getDepositAmount());
         unit.setVacant(false);
         unitRepository.save(unit);
 
@@ -298,7 +320,7 @@ public class LeaseService {
                 remainingPaid = remainingPaid.subtract(amountPaid);
             }
 
-            rentRecordService.createRecord(lease, periodStart, periodEnd, rent, amountPaid, true);
+            rentRecordService.createRecord(lease, periodStart, periodEnd, rent, amountPaid);
         }
 
         return leaseMapper.toLeaseResponseDto(lease);
@@ -310,11 +332,11 @@ public class LeaseService {
         boolean isOwner = false;
 
         if(tenant.getLandlord() != null){
-            if(tenant.getLandlord().equals(lease.getLandlord())){
+            if(tenant.getLandlord().getId().equals(lease.getLandlord().getId())){
                 isOwner = true;
             }
         }else if(tenant.getOrganisation() != null){
-            if(tenant.getOrganisation().equals(lease.getOrganisation())){
+            if(tenant.getOrganisation().getId().equals(lease.getOrganisation().getId())){
                 isOwner = true;
             }
         }else {
@@ -331,7 +353,7 @@ public class LeaseService {
 
 
     @Transactional
-    public void endLease(Long leaseId, User authenticatedUser, DepositStatus depositStatus) {
+    public void endLease( Long  leaseId,EndLeaseDto dto, User authenticatedUser) {
 
         boolean isOfficer =  authenticatedUser.getRole().equals(Role.CHAIRMAN)
                 ||  authenticatedUser.getRole().equals(Role.SECRETARY);
@@ -339,45 +361,19 @@ public class LeaseService {
         Lease lease = leaseRepository.findById(leaseId)
                 .orElseThrow(()-> new ResourceNotFound("Lease not Found"));
 
-        if(authenticatedUser.getRole().equals(Role.LANDLORD)){
 
-            if(!lease.getLandlord().equals(authenticatedUser)){
-                throw new BusinessRuleException("You are not assigned to this lease");
-            }
-
-            lease.setEndDate(LocalDate.now());
-        } else if (isOfficer && authenticatedUser.isActive()) {
-            Organisation organisation = authenticatedUser.getOrganisation();
-
-            if(!lease.getOrganisation().equals(organisation)){
-                throw new BusinessRuleException("You are not assigned to this lease");
-            }
-            lease.getUnit().setVacant(true);
-
-            unitRepository.save(lease.getUnit());
-
-            lease.setEndDate(LocalDate.now());
-        } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
-
-            Property property = lease.getUnit().getProperty();
-
-            boolean exists =propertyAsignRepository.existsByCareTakerAndPropertyAndUnAssignedAtIsNull(authenticatedUser, property);
-
-            if(exists){
-                lease.setEndDate(LocalDate.now());
-            }else{
-                throw new BusinessRuleException("you are not assigned to this property");
-            }
-
-        }else {
-            throw new BusinessRuleException("You cannot end a lease");
+        if(!ownsIt(lease,lease.getUnit().getProperty(), authenticatedUser)){
+            throw new BusinessRuleException("You are not allowed to end this lease");
         }
 
-        if(depositStatus.equals(DepositStatus.REFUNDED) || depositStatus.equals(DepositStatus.PARTIALLY_REFUNDED) ){
-            lease.setDepositRefundedAt(LocalDateTime.now());
-        }
+
+        lease.setDepositDeductions(dto.depositDeductions());
+        lease.setDepositRefunded(dto.depositRefunded());
+        lease.setDeductionReason(dto.deductionReason());
+        lease.getUnit().setVacant(true);
+        unitRepository.save(lease.getUnit());
+        lease.setEndDate(LocalDate.now());
         lease.setLeaseStatus(LeaseStatus.ENDED);
-        lease.setDepositStatus(depositStatus);
         leaseRepository.save(lease);
 
     }
@@ -391,28 +387,36 @@ public class LeaseService {
                 || authenticatedUser.getRole().equals(Role.SECRETARY)
                 || authenticatedUser.getRole().equals(Role.TREASURER);
 
-        List<Lease> leaseList = new ArrayList<>();
+        List<Lease> leaseList = leaseRepository.findByUnit_Property(property);
+
+        boolean isAllowed;
 
         if(authenticatedUser.getRole().equals(Role.LANDLORD)){
-            if(!property.getLandlord().equals(authenticatedUser)){
-                throw new BusinessRuleException("You are not assigned to this property");
+            if(property.getLandlord() == null
+                    || !property.getLandlord().getId().equals(authenticatedUser.getId())){
+                throw new BusinessRuleException("Sorry you cant view this Lease");
             }
-            leaseList = leaseRepository.findByUnit_Property(property);
+            isAllowed = true;
         }else if(isOfficer && authenticatedUser.isActive()) {
-            if (!propertyRepository.existsByIdAndOrganisationId(propertyId, authenticatedUser.getOrganisation().getId())) {
+            if (authenticatedUser.getOrganisation() == null
+                    || !propertyRepository.existsByIdAndOrganisationId(propertyId, authenticatedUser.getOrganisation().getId())) {
                 throw new BusinessRuleException("You are not allowed to view leases for this property");
             }
-            leaseList = leaseRepository.findByUnit_Property(property);
+            isAllowed = true;
         } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
-        boolean isAssigned = propertyAsignRepository
-                .existsByCareTakerAndPropertyAndUnAssignedAtIsNull(authenticatedUser, property);
+            boolean isAssigned = propertyAsignRepository
+                    .existsByCareTakerAndPropertyAndUnAssignedAtIsNull(authenticatedUser, property);
 
-        if (!isAssigned) {
-            throw new BusinessRuleException("You are not assigned to this property");
+            if (!isAssigned) {
+                throw new BusinessRuleException("You are not assigned to this property");
+            }
+
+            isAllowed = true;
+        }else {
+            throw new BusinessRuleException("You are not allowed to view leases");
         }
 
-        leaseList = leaseRepository.findByUnit_Property(property);
-    }else {
+        if(!isAllowed) {
             throw new BusinessRuleException("You are not allowed to view leases");
         }
 
@@ -430,22 +434,23 @@ public class LeaseService {
                 || authenticatedUser.getRole().equals(Role.SECRETARY)
                 || authenticatedUser.getRole().equals(Role.TREASURER);
 
-        Lease lease;
+        Lease lease  = leaseRepository.findByUnitAndLeaseStatus(unit, LeaseStatus.ACTIVE)
+                .orElseThrow(() -> new ResourceNotFound("Lease not found"));
+
+        boolean isAllowed;
 
         if(authenticatedUser.getRole().equals(Role.LANDLORD)){
-            if(!unit.getProperty().getLandlord().equals(authenticatedUser)){
+            if(!unit.getProperty().getLandlord().getId().equals(authenticatedUser.getId())){
                 throw new BusinessRuleException("You cant see the lease for this property");
             }
 
-            lease = leaseRepository.findByUnitAndLeaseStatus(unit, LeaseStatus.ACTIVE)
-                    .orElseThrow(() -> new ResourceNotFound("Lease not found"));
+            isAllowed = true;
         }else if(isOfficer && authenticatedUser.isActive()) {
-            if(!unit.getProperty().getOrganisation().equals(authenticatedUser.getOrganisation())){
+            if(!unit.getProperty().getOrganisation().getId().equals(authenticatedUser.getOrganisation().getId())) {
                 throw new BusinessRuleException("You cant see the lease for this property");
             }
 
-            lease = leaseRepository.findByUnitAndLeaseStatus(unit, LeaseStatus.ACTIVE)
-                    .orElseThrow(() -> new ResourceNotFound("Lease not found"));
+            isAllowed = true;
         }else if(authenticatedUser.getRole().equals(Role.CARETAKER)) {
             boolean isAssigned = propertyAsignRepository.existsByCareTakerAndPropertyAndUnAssignedAtIsNull(authenticatedUser, unit.getProperty());
 
@@ -453,9 +458,12 @@ public class LeaseService {
                 throw new BusinessRuleException("You are not allowed to view leases for this property");
             }
 
-            lease = leaseRepository.findByUnitAndLeaseStatus(unit, LeaseStatus.ACTIVE)
-                    .orElseThrow(()-> new ResourceNotFound("Lease not found"));
+            isAllowed = true;
         }else {
+            throw new BusinessRuleException("You are not allowed to view leases");
+        }
+
+        if(!isAllowed) {
             throw new BusinessRuleException("You are not allowed to view leases");
         }
 
@@ -470,19 +478,21 @@ public class LeaseService {
                     || authenticatedUser.getRole().equals(Role.SECRETARY)
                     || authenticatedUser.getRole().equals(Role.TREASURER);
 
-            List<Lease> leaseList;
+            List<Lease> leaseList = leaseRepository.findByUnit(unit);
+
+            boolean isAllowed;
 
             if(authenticatedUser.getRole().equals(Role.LANDLORD)){
-                if(!unit.getProperty().getLandlord().equals(authenticatedUser)){
+                if(unit.getProperty().getLandlord() != null && !unit.getProperty().getLandlord().getId().equals(authenticatedUser.getId())){
                     throw new BusinessRuleException("You cant see the lease for this property");
                 }
 
-                leaseList = leaseRepository.findByUnit(unit);
+                isAllowed = true;
             }else if(isOfficer && authenticatedUser.isActive()) {
-                if(!unit.getProperty().getOrganisation().equals(authenticatedUser.getOrganisation())){
+                if(unit.getProperty().getOrganisation() != null && !unit.getProperty().getOrganisation().getId().equals(authenticatedUser.getOrganisation().getId())){
                     throw new BusinessRuleException("You cant see the lease for this property");
                 }
-                leaseList = leaseRepository.findByUnit(unit);
+                isAllowed = true;
             } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
 
                 boolean isAssigned = propertyAsignRepository.existsByCareTakerAndPropertyAndUnAssignedAtIsNull(authenticatedUser, unit.getProperty());
@@ -490,9 +500,13 @@ public class LeaseService {
                 if (!isAssigned) {
                     throw new BusinessRuleException("You are not allowed to view leases for this property");
                 }
-                leaseList = leaseRepository.findByUnit(unit);
+                isAllowed = true;
 
             }else {
+                throw new BusinessRuleException("You are not allowed to view leases");
+            }
+
+            if (!isAllowed) {
                 throw new BusinessRuleException("You are not allowed to view leases");
             }
 

@@ -9,6 +9,7 @@ import com.merlin.PropertManagmentSystem.TransactionLog.TransactionLog;
 import com.merlin.PropertManagmentSystem.Unit.Unit;
 import com.merlin.PropertManagmentSystem.User.User;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -39,21 +40,17 @@ public class Lease {
     private LocalDate StartDate;
     private LocalDate EndDate;
     private BigDecimal rentAtSigning;
+    private BigDecimal depositPaid = BigDecimal.ZERO;
+    @Enumerated(EnumType.STRING)
+    private DepositStatus depositStatus = DepositStatus.NOT_PAID;
+    private BigDecimal depositAmount;
     @Enumerated(EnumType.STRING)
     private LeaseStatus leaseStatus;
-    private BigDecimal depositAmount;
-    private BigDecimal depositPaid;
-    @Enumerated(EnumType.STRING)
-    private DepositStatus depositStatus;
     private LocalDateTime depositRefundedAt;
     private int preferredBillingDay;
-    private boolean isApproved;
-    @ManyToOne(fetch = FetchType.LAZY )
-    @JoinColumn(
-            name = "approvedBy"
-    )
-    @JsonBackReference
-    private User approvedBy;
+    private BigDecimal depositRefunded;
+    private BigDecimal depositDeductions;
+    private String deductionReason;
     @ManyToOne(fetch = FetchType.LAZY )
     @JoinColumn(
             name="createdById"

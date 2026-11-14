@@ -41,7 +41,6 @@ public class RentRecordService {
     private final RentRecordRepository rentRecordRepository;
     private final RentRecordMapper rentRecordMapper;
     private  final PropertyAsignRepository propertyAsignRepository;
-    private final UnitRepository unitRepository;
     private final LeaseRepository leaseRepository;
     private final CreditRepository creditRepository;
     private final PaymentAllocationService paymentAllocationService;
@@ -49,7 +48,7 @@ public class RentRecordService {
     private static final ZoneId NAIROBI = ZoneId.of("Africa/Nairobi");
 
 
-    public void createFirstRentRecord(Lease lease) {
+    public BigDecimal createFirstRentRecord(Lease lease) {
 
         LocalDate today = LocalDate.now(NAIROBI);
         LocalDate billingStart = lease.getStartDate().isBefore(today) ? today : lease.getStartDate();
@@ -61,22 +60,26 @@ public class RentRecordService {
         }
         long days = Math.min(ChronoUnit.DAYS.between(billingStart, next), 30);
 
-        BigDecimal rentAmount = lease.getRentAtSigning();
+        BigDecimal rentAmount = lease.getUnit().getMonthlyRent();
         BigDecimal amountDue = days < 10
                 ? rentAmount
                 : rentAmount.multiply(BigDecimal.valueOf(days))
                 .divide(BigDecimal.valueOf(30), 2, RoundingMode.HALF_UP);
 
-        createRecord(lease, billingStart, next.minusDays(1), amountDue, BigDecimal.ZERO, false);
+
+        createRecord(lease, billingStart, next.minusDays(1), amountDue, BigDecimal.ZERO);
 
 
         applyPayment(lease);
 
+        return amountDue;
+
     }
 
 
+
     public RentRecord createRecord(Lease lease, LocalDate periodStart, LocalDate periodEnd,
-                            BigDecimal amountDue, BigDecimal amountPaid, boolean declared) {
+                            BigDecimal amountDue, BigDecimal amountPaid) {
 
         if (amountDue.signum() <= 0) {
             throw new BusinessRuleException("Amount due must be positive");
@@ -97,7 +100,7 @@ public class RentRecordService {
         record.setEndDate(periodEnd);
         record.setAmountDue(amountDue);
         record.setAmountPaid(amountPaid);
-        record.setDeclared(declared);
+
         record.setRentStatus(statusFor(amountDue, amountPaid));
         return rentRecordRepository.save(record);
     }
@@ -259,28 +262,31 @@ public class RentRecordService {
         RentRecord rentRecord = rentRecordRepository.findById(rentRecordId)
                 .orElseThrow(()-> new ResourceNotFound("Rent Record not Found"));
 
-        RentRecord rightRentRecord;
+        boolean isAllowed = false;
 
         if(authenticatedUser.getRole().equals(Role.LANDLORD)){
-            if(!rentRecord.getLease().getLandlord().equals(authenticatedUser)){
-                throw new BusinessRuleException("Invalid landlord");
+            if(!rentRecord.getLease().getLandlord().getId().equals(authenticatedUser.getId())){
+                throw new BusinessRuleException("You cant view the rent record");
             }
-            rightRentRecord = rentRecord;
+            isAllowed = true;
         } else if (isOfficer) {
-            if(!rentRecord.getLease().getOrganisation().equals(authenticatedUser.getOrganisation())){
-                throw new BusinessRuleException("Invalid organisation");
+            if(!rentRecord.getLease().getOrganisation().getId().equals(authenticatedUser.getOrganisation().getId())){
+                throw new BusinessRuleException("You cant view the rent record");
             }
-            rightRentRecord = rentRecord;
+            isAllowed = true;
         } else if (authenticatedUser.getRole().equals(Role.CARETAKER)) {
 
             boolean isAssigned = propertyAsignRepository
                     .existsByCareTakerAndPropertyAndUnAssignedAtIsNull(authenticatedUser, rentRecord.getLease().getTenant().getLandlord().getProperty());
 
             if(!isAssigned){
-                throw new BusinessRuleException("You cant see this rent records since youre not assigned anymore");
+                throw new BusinessRuleException("You cant see this rent records since you're not assigned anymore");
             }
-            rightRentRecord = rentRecord;
+            isAllowed = true;
 
+        }
+        if(!isAllowed){
+            throw new BusinessRuleException("Sorry you cant view the rent record");
         }
 
         return rentRecordMapper.toRentRecordResponseDto(rentRecord);

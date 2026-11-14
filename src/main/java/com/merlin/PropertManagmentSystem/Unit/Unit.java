@@ -37,7 +37,6 @@ public class Unit {
     private LocalDateTime createdAt;
     private boolean active;
     private boolean isVacant;
-    private BigDecimal rent;
     @Enumerated(EnumType.STRING)
     private UnitType unitType;
 
@@ -64,11 +63,10 @@ public class Unit {
     public Unit() {
     }
 
-    public Unit(String unitNumber, String accountNumber, BigDecimal monthlyRent, BigDecimal depositAmount, BigDecimal rent) {
+    public Unit(String unitNumber, String accountNumber, BigDecimal monthlyRent, BigDecimal depositAmount) {
         this.unitNumber = unitNumber;
         this.accountNumber = accountNumber;
         this.monthlyRent = monthlyRent;
         this.depositAmount = depositAmount;
-        this.rent = rent;
     }
 }

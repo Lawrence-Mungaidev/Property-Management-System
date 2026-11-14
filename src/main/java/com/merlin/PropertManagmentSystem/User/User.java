@@ -206,12 +206,6 @@ public class User implements UserDetails {
     private List<Lease> leaseCreatedBy;
 
     @OneToMany(
-            mappedBy = "approvedBy"
-    )
-    @JsonManagedReference
-    private List<Lease> approvedByList;
-
-    @OneToMany(
             mappedBy = "landLord"
     )
     @JsonManagedReference

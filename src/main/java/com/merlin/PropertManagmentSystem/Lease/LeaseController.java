@@ -47,10 +47,10 @@ public class LeaseController {
     @PreAuthorize("hasAnyRole('LANDLORD', 'CHAIRMAN', 'SECRETARY', 'CARETAKER')")
     public ResponseEntity<Void> endLease(
             @PathVariable("leaseId") Long leaseId,
-            @RequestParam("depositStatus") DepositStatus depositStatus,
+            @Valid @RequestBody EndLeaseDto dto,
             @AuthenticationPrincipal User authenticatedUser
     ) {
-        leaseService.endLease(leaseId, authenticatedUser, depositStatus);
+        leaseService.endLease(leaseId,dto, authenticatedUser);
         return ResponseEntity.noContent().build();
     }
 
