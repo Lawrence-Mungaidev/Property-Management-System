@@ -4,8 +4,10 @@ import java.math.BigDecimal;
 
 public record RentRecordResponseDto(
         Long Id,
-        BigDecimal amountDue,
+
+        BigDecimal monthlyRent,
         BigDecimal amountPaid,
+        BigDecimal amountDue,
         RentStatus rentStatus,
         Long unitId
 ) {

@@ -79,12 +79,12 @@ public class RentRecordService {
 
 
     public RentRecord createRecord(Lease lease, LocalDate periodStart, LocalDate periodEnd,
-                            BigDecimal amountDue, BigDecimal amountPaid) {
+                            BigDecimal monthlyRent, BigDecimal amountPaid) {
 
-        if (amountDue.signum() <= 0) {
+        if (monthlyRent.signum() <= 0) {
             throw new BusinessRuleException("Amount due must be positive");
         }
-        if (amountPaid.signum() < 0 || amountPaid.compareTo(amountDue) > 0) {
+        if (amountPaid.signum() < 0 || amountPaid.compareTo(monthlyRent) > 0) {
             throw new BusinessRuleException("Amount paid must be between 0 and the amount due");
         }
         if (periodEnd.isBefore(periodStart)) {
@@ -98,10 +98,10 @@ public class RentRecordService {
         record.setLease(lease);
         record.setStartDate(periodStart);
         record.setEndDate(periodEnd);
-        record.setAmountDue(amountDue);
+        record.setMonthlyRent(monthlyRent);
         record.setAmountPaid(amountPaid);
 
-        record.setRentStatus(statusFor(amountDue, amountPaid));
+        record.setRentStatus(statusFor(monthlyRent, amountPaid));
         return rentRecordRepository.save(record);
     }
 
@@ -168,11 +168,11 @@ public class RentRecordService {
 
         for (RentRecord record : rentRecordList) {
             for (Credit credit : creditList) {
-                if (record.getAmountDue().compareTo(record.getAmountPaid()) <= 0) {
+                if (record.getMonthlyRent().compareTo(record.getAmountPaid()) <= 0) {
                     break;
                 }
 
-                BigDecimal owingRent = record.getAmountDue().subtract(record.getAmountPaid());
+                BigDecimal owingRent = record.getMonthlyRent().subtract(record.getAmountPaid());
 
 
                 if (credit.getRemainingAmount().signum() <= 0) {
@@ -191,7 +191,7 @@ public class RentRecordService {
                 }
 
 
-                record.setRentStatus(statusFor(record.getAmountDue(), record.getAmountPaid()));
+                record.setRentStatus(statusFor(record.getMonthlyRent(), record.getAmountPaid()));
 
                 paymentAllocationService.addAllocation(record,credit,AllocationType.RENT,takeRentAmount,lease);
 

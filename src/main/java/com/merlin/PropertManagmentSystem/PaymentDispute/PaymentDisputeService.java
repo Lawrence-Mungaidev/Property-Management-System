@@ -128,7 +128,7 @@ public class PaymentDisputeService {
                 RentRecord rentRecord = paymentAllocation.getRentRecord();
 
                 rentRecord.setAmountPaid(rentRecord.getAmountPaid().subtract(paymentAllocation.getAmount()));
-                rentRecord.setRentStatus(statusFor(rentRecord.getAmountDue(),rentRecord.getAmountPaid()));
+                rentRecord.setRentStatus(statusFor(rentRecord.getMonthlyRent(),rentRecord.getAmountPaid()));
                 rentRecordRepository.save(rentRecord);
 
                 credit.setCreditStatus(CreditStatus.REVERSED);

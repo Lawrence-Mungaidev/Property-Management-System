@@ -31,11 +31,11 @@ public class RentRecord {
     private LocalDate startDate;
     private LocalDate endDate;
     private String periodMonth;
-    private BigDecimal amountDue;
+    private BigDecimal monthlyRent;
     private BigDecimal amountPaid;
     @Enumerated(EnumType.STRING)
     private RentStatus rentStatus;
-    private boolean declared;
+
 
     @OneToMany(
             mappedBy = "rentRecord"
@@ -47,7 +47,7 @@ public class RentRecord {
     }
 
     public RentRecord(BigDecimal amountDue, BigDecimal amountPaid) {
-        this.amountDue = amountDue;
+        this.monthlyRent = amountDue;
         this.amountPaid = amountPaid;
     }
 }
